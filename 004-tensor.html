@@ -1,0 +1,170 @@
+<!doctype>
+<html> 
+  <head>
+  </head>
+  <body>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <canvas id="canvas"></canvas>
+    <script>
+    
+// HTML & JS project to simulate projectile shooting with deep learning to improve targeting
+
+// Include TensorFlow.js in your HTML file:
+
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 800;
+canvas.height = 600;
+
+// Launcher position (bottom left)
+const launcher = { x: 50, y: canvas.height - 50 };
+// Target position (bottom right)
+const target = { x: 700, y: canvas.height - 50 };
+
+// Gravity
+const g = 9.81;
+
+// Deep learning model
+let model;
+let trainingData = [];
+
+// Draw launcher
+function drawLauncher() {
+  ctx.fillStyle = 'green';
+  ctx.fillRect(launcher.x - 10, launcher.y - 10, 20, 20);
+}
+
+// Draw target
+function drawTarget() {
+  ctx.beginPath();
+  ctx.arc(target.x, target.y, 10, 0, Math.PI * 2);
+  ctx.fillStyle = 'red';
+  ctx.fill();
+  ctx.closePath();
+}
+
+// Function to simulate a projectile given angle and velocity
+function simulateProjectile(angle, velocity) {
+  const radians = (angle * Math.PI) / 180;
+  const timeStep = 0.05;
+  let t = 0;
+  let x = launcher.x;
+  let y = launcher.y;
+
+  let projectilePath = [];
+
+  while (y <= canvas.height && x < canvas.width && y >= 0) {
+    x = launcher.x + velocity * Math.cos(radians) * t;
+    y = launcher.y - (velocity * Math.sin(radians) * t - 0.5 * g * t * t);
+    projectilePath.push({ x, y });
+    t += timeStep;
+  }
+
+  return projectilePath;
+}
+
+// Animated projectile launch
+let currentPath = [];
+let currentIndex = 0;
+let trailPoints = [];
+
+function launchProjectile(angle, velocity) {
+  currentPath = simulateProjectile(angle, velocity);
+  currentIndex = 0;
+  trailPoints = [];
+}
+
+function drawAnimatedProjectile() {
+  if (currentPath.length === 0 || currentIndex >= currentPath.length) return;
+  const point = currentPath[currentIndex];
+  trailPoints.push(point);
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = 'blue';
+  ctx.fill();
+  ctx.closePath();
+  currentIndex++;
+}
+
+function drawTrail() {
+  if (trailPoints.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(trailPoints[0].x, trailPoints[0].y);
+  for (let i = 1; i < trailPoints.length; i++) {
+    ctx.lineTo(trailPoints[i].x, trailPoints[i].y);
+  }
+  ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+  ctx.stroke();
+  ctx.closePath();
+}
+
+// Initialize the deep learning model
+function initializeModel() {
+  model = tf.sequential();
+  model.add(tf.layers.dense({ inputShape: [2], units: 10, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 10, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 2 }));
+  model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+}
+
+// Train the model using the training data
+async function trainModel() {
+  if (trainingData.length < 10) return; // Ensure there is enough training data
+
+  const inputs = trainingData.map(d => [d.targetX, d.targetY]);
+  const labels = trainingData.map(d => [d.angle, d.velocity]);
+
+  const inputTensor = tf.tensor2d(inputs);
+  const labelTensor = tf.tensor2d(labels);
+
+  await model.fit(inputTensor, labelTensor, {
+    epochs: 100,
+    callbacks: tf.callbacks.earlyStopping({ monitor: 'loss', patience: 10 })
+  });
+}
+
+// Generate random angle and velocity
+function getRandomAngleAndVelocity() {
+  return {
+    angle: Math.random() * 60 + 15, // Random angle between 15 and 75 degrees
+    velocity: Math.random() * 50 + 50 // Random velocity between 50 and 100
+  };
+}
+
+// Main loop
+function mainLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawLauncher();
+  drawTarget();
+  drawTrail();
+  drawAnimatedProjectile();
+
+  requestAnimationFrame(mainLoop);
+}
+
+// Launch a projectile, either randomly or using the model's prediction
+function launch() {
+  if (model && trainingData.length >= 10) {
+    // Predict angle and velocity using the trained model
+    const inputTensor = tf.tensor2d([[target.x, target.y]]);
+    const prediction = model.predict(inputTensor).dataSync();
+    const angle = prediction[0];
+    const velocity = prediction[1];
+    launchProjectile(angle, velocity);
+  } else {
+    // Launch with random angle and velocity
+    const { angle, velocity } = getRandomAngleAndVelocity();
+    launchProjectile(angle, velocity);
+    trainingData.push({ targetX: target.x, targetY: target.y, angle, velocity });
+    trainModel();
+  }
+}
+
+initializeModel();
+launch();
+mainLoop();
+
+    </script>
+  </body>
+</html>
